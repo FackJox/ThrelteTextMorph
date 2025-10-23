@@ -162,19 +162,66 @@ export async function buildMorphGeometry(
 		targetInfo
 	];
 
+	const sourceGlyphAttr = sourceInfo.geometry.getAttribute('aTroikaGlyphBounds');
+	const targetGlyphAttr = targetInfo.geometry.getAttribute('aTroikaGlyphBounds');
+	const sourceGlyphCount = sourceGlyphAttr?.count ?? 0;
+	const targetGlyphCount = targetGlyphAttr?.count ?? 0;
+	const glyphCount = Math.max(sourceGlyphCount, targetGlyphCount);
+
+	let indexOverrides: Array<number[] | null> | undefined;
+
+	if (options.textGlyphRemap && glyphCount > 0) {
+		const targetMap = computeProportionalIndexMap(sourceGlyphCount, targetGlyphCount, glyphCount);
+		indexOverrides = [null, targetMap, targetMap, targetMap];
+	}
+
+	const builderOptions: GlyphMorphOptions = {
+		...options,
+		indexOverrides
+	};
+
 	const geometry = createMultiGlyphGeometry4(
 		toTextureInfo(sourceInfo),
 		toTextureInfo(targetInfo),
 		toTextureInfo(targetInfo),
 		toTextureInfo(targetInfo),
 		true,
-		options
+		builderOptions
 	);
 
 	return {
 		geometry,
 		textures
 	};
+}
+
+function computeProportionalIndexMap(
+	sourceCount: number,
+	targetCount: number,
+	glyphCount: number
+): number[] {
+	const map = new Array<number>(glyphCount).fill(-1);
+
+	if (targetCount <= 0) {
+		return map;
+	}
+
+	if (glyphCount === 1) {
+		map[0] = 0;
+		return map;
+	}
+
+	const targetMax = targetCount - 1;
+	const denominator = Math.max(1, glyphCount - 1);
+
+	for (let i = 0; i < glyphCount; i++) {
+		const ratio = i / denominator;
+		let targetIndex = Math.round(ratio * targetMax);
+		targetIndex = Math.max(0, Math.min(targetMax, targetIndex));
+		map[i] = targetIndex;
+	}
+
+	return map;
 }
 
 function toTextureInfo(info: SimpleSDFInfo): TextureInfo {

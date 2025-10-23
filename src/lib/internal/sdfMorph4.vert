@@ -8,6 +8,7 @@ varying float vChannel2;
 varying float vChannel3;
 varying float vChannel4;
 varying vec2 vTroikaGlyphDimensions;
+varying vec4 vPresence;
 
 // Attributes for all 4 fonts
 attribute vec2 morphUv2;
@@ -21,6 +22,7 @@ attribute float aChannel2;
 attribute float aChannel3;
 attribute float aChannel4;
 attribute vec2 aTroikaGlyphDimensions;
+attribute vec4 aPresenceAll;
 
 // Uniforms
 uniform float morphProgress; // 0.0-1.0 for transition progress
@@ -53,6 +55,7 @@ void main() {
     vChannel3 = aChannel3;
     vChannel4 = aChannel4;
     vTroikaGlyphDimensions = aTroikaGlyphDimensions;
+    vPresence = aPresenceAll;
     
     gl_Position = projectionMatrix * modelViewMatrix * vec4(morphedPosition, 1.0);
 }

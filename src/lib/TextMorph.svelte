@@ -411,7 +411,8 @@ let morphTextures: [SimpleSDFInfo, SimpleSDFInfo, SimpleSDFInfo, SimpleSDFInfo] 
 			{
 				duplicateMissingGlyphs,
 				blendGlyphIndices,
-				applyPostProcess: postProcessMorph
+				applyPostProcess: postProcessMorph,
+				textGlyphRemap: mode === 'text'
 			}
 		);
 

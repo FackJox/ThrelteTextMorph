@@ -24,6 +24,8 @@ export interface GlyphMorphOptions {
 	duplicateMissingGlyphs?: boolean;
 	blendGlyphIndices?: boolean;
 	applyPostProcess?: boolean;
+	textGlyphRemap?: boolean;
+	indexOverrides?: Array<number[] | null>;
 }
 
 // Multi-glyph geometry builder for 4 fonts
@@ -103,11 +105,15 @@ export function createMultiGlyphGeometry4(
 	const channels2 = new Float32Array(totalVertices);
 	const channels3 = new Float32Array(totalVertices);
 	const channels4 = new Float32Array(totalVertices);
+	const presencesAll = new Float32Array(totalVertices * 4);
 	const glyphDimensions = new Float32Array(totalVertices * 2);
 	const indices = new Uint16Array(totalIndices);
 
 	const appliedGlyphIndices: number[][] = Array.from({ length: 4 }, () =>
 		Array(glyphCount).fill(-1)
+	);
+	const glyphPresencePerFont: Float32Array[] = Array.from({ length: 4 }, () =>
+		new Float32Array(glyphCount)
 	);
 
 	function resolveGlyphIndex(globalIdx: number, availableCount: number): number {
@@ -305,19 +311,26 @@ export function createMultiGlyphGeometry4(
 	) {
 		const glyphBounds = glyphBoundsAttr?.array ?? null;
 		const glyphIndices = glyphIndexAttr?.array ?? null;
+		const overrideIndices = options.indexOverrides?.[fontIndex] ?? null;
 
 		for (let glyphIdx = 0; glyphIdx < glyphCount; glyphIdx++) {
 			const vertexOffset = glyphIdx * 4;
-			const sampleIndex = resolveGlyphIndex(glyphIdx, availableCount);
+			const overrideIndex = overrideIndices?.[glyphIdx];
+			const sampleIndex =
+				overrideIndices && overrideIndex !== undefined
+					? overrideIndex
+					: resolveGlyphIndex(glyphIdx, availableCount);
 			appliedGlyphIndices[fontIndex][glyphIdx] = sampleIndex;
 
-			const boundsIdx = sampleIndex * 4;
 			const hasSample =
 				sampleIndex !== -1 &&
+				sampleIndex >= 0 &&
 				glyphBoundsAttr !== null &&
 				sampleIndex < availableCount;
+			const boundsIdx = hasSample ? sampleIndex * 4 : 0;
 			const hasGlyphIndex =
 				sampleIndex !== -1 &&
+				sampleIndex >= 0 &&
 				glyphIndexAttr !== null &&
 				sampleIndex < (glyphIndexAttr?.count ?? 0);
 
@@ -378,7 +391,6 @@ export function createMultiGlyphGeometry4(
 				uvsArray[uvIdx + 1] = quadUVs[vertIdx][1];
 
 				channelsArray[vertexOffset + vertIdx] = channel;
-
 				if (fontIndex === 0) {
 					normals[posIdx + 0] = 0;
 					normals[posIdx + 1] = 0;
@@ -456,6 +468,53 @@ export function createMultiGlyphGeometry4(
 	applyCenterSmoothing(positions3, appliedGlyphIndices[2]);
 	applyCenterSmoothing(positions4, appliedGlyphIndices[3]);
 
+	// Compute glyph ownership for each font to determine final visibility
+	appliedGlyphIndices.forEach((assignments, fontIndex) => {
+		const presence = glyphPresencePerFont[fontIndex];
+		const availableCount =
+			fontIndex === 0
+				? glyphBoundsAttr1?.count ?? 0
+				: fontIndex === 1
+				? glyphBoundsAttr2?.count ?? 0
+				: fontIndex === 2
+				? glyphBoundsAttr3?.count ?? 0
+				: glyphBoundsAttr4?.count ?? 0;
+
+		if (availableCount <= 0) {
+			presence.fill(0);
+			return;
+		}
+
+		const ownerForSample = new Array<number>(availableCount).fill(-1);
+
+		for (let glyphIdx = 0; glyphIdx < glyphCount; glyphIdx++) {
+			const assigned = assignments[glyphIdx];
+			if (assigned >= 0 && assigned < availableCount) {
+				ownerForSample[assigned] = glyphIdx;
+			}
+		}
+
+		for (let glyphIdx = 0; glyphIdx < glyphCount; glyphIdx++) {
+			const assigned = assignments[glyphIdx];
+			if (assigned === -1 || assigned >= availableCount) {
+				presence[glyphIdx] = 0;
+				continue;
+			}
+			presence[glyphIdx] = ownerForSample[assigned] === glyphIdx ? 1 : 0;
+		}
+	});
+
+	// Populate packed presence buffer
+	for (let glyphIdx = 0; glyphIdx < glyphCount; glyphIdx++) {
+		for (let vertIdx = 0; vertIdx < 4; vertIdx++) {
+			const baseIndex = (glyphIdx * 4 + vertIdx) * 4;
+			presencesAll[baseIndex + 0] = glyphPresencePerFont[0][glyphIdx] ?? 0;
+			presencesAll[baseIndex + 1] = glyphPresencePerFont[1][glyphIdx] ?? 0;
+			presencesAll[baseIndex + 2] = glyphPresencePerFont[2][glyphIdx] ?? 0;
+			presencesAll[baseIndex + 3] = glyphPresencePerFont[3][glyphIdx] ?? 0;
+		}
+	}
+
 	// Set geometry attributes
 	geometry.setAttribute('position', new THREE.Float32BufferAttribute(positions, 3));
 	geometry.setAttribute('morphPosition2', new THREE.Float32BufferAttribute(positions2, 3));
@@ -470,6 +529,7 @@ export function createMultiGlyphGeometry4(
 	geometry.setAttribute('aChannel2', new THREE.Float32BufferAttribute(channels2, 1));
 	geometry.setAttribute('aChannel3', new THREE.Float32BufferAttribute(channels3, 1));
 	geometry.setAttribute('aChannel4', new THREE.Float32BufferAttribute(channels4, 1));
+	geometry.setAttribute('aPresenceAll', new THREE.Float32BufferAttribute(presencesAll, 4));
 	geometry.setAttribute(
 		'aTroikaGlyphDimensions',
 		new THREE.Float32BufferAttribute(glyphDimensions, 2)
