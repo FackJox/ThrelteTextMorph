@@ -1,0 +1,49 @@
+{
+  "name": "@jackfoxdev/ThrelteTextMorph",
+  "version": "0.0.1",
+  "description": "Threlte component for morphing text and fonts with SDF.",
+  "type": "module",
+  "svelte": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "files": [
+    "dist"
+  ],
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "svelte": "./dist/index.js",
+      "import": "./dist/index.js"
+    }
+  },
+  "scripts": {
+    "build": "svelte-package",
+    "check": "svelte-check --tsconfig ./tsconfig.json",
+    "test": "vitest --config vitest.config.ts",
+    "dev:playground": "npm --prefix examples/playground run dev",
+    "build:playground": "npm --prefix examples/playground run build",
+    "preview:playground": "npm --prefix examples/playground run preview"
+  },
+  "peerDependencies": {
+    "@threlte/core": "^7.0.0",
+    "@threlte/extras": "^7.0.0",
+    "svelte": "^4.0.0",
+    "three": "^0.158.0",
+    "troika-three-text": "^0.50.2"
+  },
+  "devDependencies": {
+    "@sveltejs/package": "^2.2.2",
+    "@sveltejs/vite-plugin-svelte": "^3.0.1",
+    "@testing-library/svelte": "^4.0.4",
+    "@threlte/core": "^7.0.0",
+    "@threlte/extras": "^7.0.0",
+    "@tsconfig/svelte": "^4.0.0",
+    "jsdom": "^27.0.1",
+    "svelte": "^4.2.0",
+    "svelte-check": "^3.6.0",
+    "ts-node": "^10.9.2",
+    "troika-three-text": "^0.50.2",
+    "typescript": "^5.4.0",
+    "vite": "^5.0.0",
+    "vitest": "^1.5.0"
+  }
+}

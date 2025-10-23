@@ -1,0 +1,16 @@
+{
+  "extends": "../../tsconfig.json",
+  "compilerOptions": {
+    "moduleResolution": "bundler",
+    "types": ["svelte"],
+    "baseUrl": ".",
+    "paths": {
+      "@jackfoxdev/threlte-text-morph": ["../../src/lib/index.ts"],
+      "@jackfoxdev/threlte-text-morph/*": ["../../src/lib/*"]
+    }
+  },
+  "include": [
+    "src/**/*",
+    "vite.config.ts"
+  ]
+}
