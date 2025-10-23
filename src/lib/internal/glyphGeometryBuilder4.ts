@@ -20,13 +20,20 @@ export interface TextureInfo {
 	uniforms: ShaderUniforms;
 }
 
+export interface GlyphMorphOptions {
+	duplicateMissingGlyphs?: boolean;
+	blendGlyphIndices?: boolean;
+	applyPostProcess?: boolean;
+}
+
 // Multi-glyph geometry builder for 4 fonts
 export function createMultiGlyphGeometry4(
 	textureInfo1: TextureInfo,
 	textureInfo2: TextureInfo | null,
 	textureInfo3: TextureInfo | null,
 	textureInfo4: TextureInfo | null,
-	normalizeSize: boolean = true
+	normalizeSize: boolean = true,
+	options: GlyphMorphOptions = {}
 ): SimpleGeometry | null {
 	// We need the original geometry to get glyph data
 	const troikaGeometry1 = textureInfo1.geometry;
@@ -46,6 +53,13 @@ export function createMultiGlyphGeometry4(
 
 	const glyphBoundsAttr4 = textureInfo4?.geometry?.getAttribute('aTroikaGlyphBounds');
 	const glyphIndexAttr4 = textureInfo4?.geometry?.getAttribute('aTroikaGlyphIndex');
+
+	const glyphCounts = [
+		glyphBoundsAttr1?.count ?? 0,
+		glyphBoundsAttr2?.count ?? 0,
+		glyphBoundsAttr3?.count ?? 0,
+		glyphBoundsAttr4?.count ?? 0
+	];
 
 	if (!glyphBoundsAttr1 || !glyphIndexAttr1) {
 		return null;
@@ -91,6 +105,82 @@ export function createMultiGlyphGeometry4(
 	const channels4 = new Float32Array(totalVertices);
 	const glyphDimensions = new Float32Array(totalVertices * 2);
 	const indices = new Uint16Array(totalIndices);
+
+	const appliedGlyphIndices: number[][] = Array.from({ length: 4 }, () =>
+		Array(glyphCount).fill(-1)
+	);
+
+	function resolveGlyphIndex(globalIdx: number, availableCount: number): number {
+		if (availableCount <= 0) {
+			return -1;
+		}
+		if (
+			options.blendGlyphIndices &&
+			glyphCount > 1 &&
+			availableCount > 1
+		) {
+			const normalized =
+				glyphCount > 1 ? globalIdx / (glyphCount - 1) : 0;
+			const mapped = normalized * (availableCount - 1);
+			const rounded = Math.round(mapped);
+			return Math.max(0, Math.min(availableCount - 1, rounded));
+		}
+		if (options.duplicateMissingGlyphs) {
+			return Math.max(0, Math.min(availableCount - 1, globalIdx));
+		}
+		return globalIdx < availableCount ? globalIdx : -1;
+	}
+
+	function applyCenterSmoothing(positionsArray: Float32Array, trackedIndices: number[]) {
+		if (!options.applyPostProcess) {
+			return;
+		}
+		if (glyphCount < 3) {
+			return;
+		}
+
+		const centers = new Array<number>(glyphCount).fill(0);
+		const hasGlyph = new Array<boolean>(glyphCount).fill(false);
+
+		for (let glyphIdx = 0; glyphIdx < glyphCount; glyphIdx++) {
+			if (trackedIndices[glyphIdx] === -1) {
+				continue;
+			}
+			const baseVertex = glyphIdx * 4;
+			const left = positionsArray[(baseVertex + 0) * 3];
+			const right = positionsArray[(baseVertex + 1) * 3];
+			const center = (left + right) / 2;
+			centers[glyphIdx] = center;
+			hasGlyph[glyphIdx] = true;
+		}
+
+		const validGlyphs = hasGlyph.filter(Boolean).length;
+		if (validGlyphs < 3) {
+			return;
+		}
+
+		const adjustments = new Array<number>(glyphCount).fill(0);
+		const smoothingStrength = 0.25;
+
+		for (let glyphIdx = 1; glyphIdx < glyphCount - 1; glyphIdx++) {
+			if (!hasGlyph[glyphIdx]) continue;
+			if (!hasGlyph[glyphIdx - 1] || !hasGlyph[glyphIdx + 1]) continue;
+			const neighborAverage = (centers[glyphIdx - 1] + centers[glyphIdx + 1]) / 2;
+			const delta = (neighborAverage - centers[glyphIdx]) * smoothingStrength;
+			adjustments[glyphIdx] = delta;
+		}
+
+		for (let glyphIdx = 0; glyphIdx < glyphCount; glyphIdx++) {
+			const delta = adjustments[glyphIdx];
+			if (delta === 0) continue;
+			if (!hasGlyph[glyphIdx]) continue;
+			const baseVertex = glyphIdx * 4;
+			for (let vertIdx = 0; vertIdx < 4; vertIdx++) {
+				const posIdx = (baseVertex + vertIdx) * 3;
+				positionsArray[posIdx + 0] += delta;
+			}
+		}
+	}
 
 	// Calculate bounding boxes for each font to normalize sizes
 	function calculateFontBounds(
@@ -210,24 +300,33 @@ export function createMultiGlyphGeometry4(
 		channelsArray: Float32Array,
 		fontIndex: number,
 		scaleFactor: number,
-		offset: { x: number; y: number }
+		offset: { x: number; y: number },
+		availableCount: number
 	) {
 		const glyphBounds = glyphBoundsAttr?.array ?? null;
 		const glyphIndices = glyphIndexAttr?.array ?? null;
 
 		for (let glyphIdx = 0; glyphIdx < glyphCount; glyphIdx++) {
 			const vertexOffset = glyphIdx * 4;
-			const boundsIdx = glyphIdx * 4;
+			const sampleIndex = resolveGlyphIndex(glyphIdx, availableCount);
+			appliedGlyphIndices[fontIndex][glyphIdx] = sampleIndex;
 
-			const hasGlyphBounds = glyphBoundsAttr && glyphIdx < glyphBoundsAttr.count;
-			const hasGlyphIndex = glyphIndexAttr && glyphIdx < glyphIndexAttr.count;
+			const boundsIdx = sampleIndex * 4;
+			const hasSample =
+				sampleIndex !== -1 &&
+				glyphBoundsAttr !== null &&
+				sampleIndex < availableCount;
+			const hasGlyphIndex =
+				sampleIndex !== -1 &&
+				glyphIndexAttr !== null &&
+				sampleIndex < (glyphIndexAttr?.count ?? 0);
 
-			const left = hasGlyphBounds ? glyphBounds![boundsIdx + 0] : 0;
-			const bottom = hasGlyphBounds ? glyphBounds![boundsIdx + 1] : 0;
-			const right = hasGlyphBounds ? glyphBounds![boundsIdx + 2] : 0;
-			const top = hasGlyphBounds ? glyphBounds![boundsIdx + 3] : 0;
+			const left = hasSample ? glyphBounds![boundsIdx + 0] : 0;
+			const bottom = hasSample ? glyphBounds![boundsIdx + 1] : 0;
+			const right = hasSample ? glyphBounds![boundsIdx + 2] : 0;
+			const top = hasSample ? glyphBounds![boundsIdx + 3] : 0;
 
-			const glyphIndex = hasGlyphIndex ? glyphIndices![glyphIdx] : 0;
+			const glyphIndex = hasGlyphIndex ? glyphIndices![sampleIndex] : 0;
 			const atlasIndex = Math.floor(glyphIndex / 4);
 			const channel = glyphIndex % 4;
 
@@ -239,7 +338,7 @@ export function createMultiGlyphGeometry4(
 			const uvRight = (col + 1) / atlasColumns;
 			const uvBottom = (row + 1) / atlasRows;
 
-			const quadPositions = hasGlyphBounds
+			const quadPositions = hasSample
 				? [
 						[left, bottom, 0],
 						[right, bottom, 0],
@@ -315,7 +414,8 @@ export function createMultiGlyphGeometry4(
 		channels,
 		0,
 		scaleFactors[0],
-		offsets[0]
+		offsets[0],
+		glyphCounts[0]
 	);
 	processFont(
 		glyphBoundsAttr2,
@@ -325,7 +425,8 @@ export function createMultiGlyphGeometry4(
 		channels2,
 		1,
 		scaleFactors[1],
-		offsets[1]
+		offsets[1],
+		glyphCounts[1]
 	);
 	processFont(
 		glyphBoundsAttr3,
@@ -335,7 +436,8 @@ export function createMultiGlyphGeometry4(
 		channels3,
 		2,
 		scaleFactors[2],
-		offsets[2]
+		offsets[2],
+		glyphCounts[2]
 	);
 	processFont(
 		glyphBoundsAttr4,
@@ -345,8 +447,14 @@ export function createMultiGlyphGeometry4(
 		channels4,
 		3,
 		scaleFactors[3],
-		offsets[3]
+		offsets[3],
+		glyphCounts[3]
 	);
+
+	applyCenterSmoothing(positions, appliedGlyphIndices[0]);
+	applyCenterSmoothing(positions2, appliedGlyphIndices[1]);
+	applyCenterSmoothing(positions3, appliedGlyphIndices[2]);
+	applyCenterSmoothing(positions4, appliedGlyphIndices[3]);
 
 	// Set geometry attributes
 	geometry.setAttribute('position', new THREE.Float32BufferAttribute(positions, 3));

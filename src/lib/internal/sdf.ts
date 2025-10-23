@@ -1,7 +1,12 @@
 import { Text as TroikaText } from 'troika-three-text';
 import * as THREE from 'three';
 import type { FontConfig } from '../types';
-import type { ShaderUniforms, TextureInfo, SimpleGeometry } from './glyphGeometryBuilder4';
+import type {
+	ShaderUniforms,
+	TextureInfo,
+	SimpleGeometry,
+	GlyphMorphOptions
+} from './glyphGeometryBuilder4';
 import { createMultiGlyphGeometry4 } from './glyphGeometryBuilder4';
 
 export interface SimpleSDFInfo {
@@ -137,9 +142,12 @@ export interface MorphGeometryResult {
 	textures: [SimpleSDFInfo, SimpleSDFInfo, SimpleSDFInfo, SimpleSDFInfo];
 }
 
+export type MorphGeometryOptions = GlyphMorphOptions;
+
 export async function buildMorphGeometry(
 	source: { text: string; font: FontConfig; layout: LayoutConfig },
-	target: { text: string; font: FontConfig; layout: LayoutConfig }
+	target: { text: string; font: FontConfig; layout: LayoutConfig },
+	options: MorphGeometryOptions = {}
 ): Promise<MorphGeometryResult> {
 	const [sourceInfo, targetInfo] = await Promise.all([
 		getSDFInfo(source.text, source.font, source.layout),
@@ -159,7 +167,8 @@ export async function buildMorphGeometry(
 		toTextureInfo(targetInfo),
 		toTextureInfo(targetInfo),
 		toTextureInfo(targetInfo),
-		true
+		true,
+		options
 	);
 
 	return {

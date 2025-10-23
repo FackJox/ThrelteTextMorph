@@ -105,6 +105,9 @@
   let baseline = 0;
   let innerWidth = 0;
   let innerHeight = 0;
+  let duplicateMissingGlyphs = false;
+  let blendGlyphIndices = false;
+  let postProcessMorph = false;
 
   let lastEvent: string | null = null;
 
@@ -262,6 +265,22 @@
     </section>
 
     <section>
+      <h2>Morph helpers</h2>
+      <label class="toggle">
+        <input type="checkbox" bind:checked={duplicateMissingGlyphs} />
+        <span>Duplicate missing glyphs</span>
+      </label>
+      <label class="toggle">
+        <input type="checkbox" bind:checked={blendGlyphIndices} />
+        <span>Weight blend glyph indices</span>
+      </label>
+      <label class="toggle">
+        <input type="checkbox" bind:checked={postProcessMorph} />
+        <span>Enable post-processing</span>
+      </label>
+    </section>
+
+    <section>
       <h2>Fonts</h2>
       {#each fonts as font, index}
         <div class="font-card">
@@ -334,6 +353,9 @@
           outlineOpacity={outlineOpacity}
           outlineWidth={outlineWidth}
           text={textInput}
+          duplicateMissingGlyphs={duplicateMissingGlyphs}
+          blendGlyphIndices={blendGlyphIndices}
+          postProcessMorph={postProcessMorph}
           on:ready={(event) => handleEvent('ready', event.detail)}
           on:stepstart={(event) => handleEvent('stepstart', event.detail)}
           on:stepend={(event) => handleEvent('stepend', event.detail)}

@@ -50,6 +50,9 @@ export let castShadow: boolean = false;
 export let receiveShadow: boolean = false;
 export let frustumCulled: boolean = true;
 export let text: string | null = null;
+export let duplicateMissingGlyphs: boolean = false;
+export let blendGlyphIndices: boolean = false;
+export let postProcessMorph: boolean = false;
 
 const dispatch = createEventDispatcher<{
 	ready: MorphEventPayload;
@@ -404,6 +407,11 @@ let morphTextures: [SimpleSDFInfo, SimpleSDFInfo, SimpleSDFInfo, SimpleSDFInfo] 
 				text: targetText,
 				font: targetFont,
 				layout: targetLayout
+			},
+			{
+				duplicateMissingGlyphs,
+				blendGlyphIndices,
+				applyPostProcess: postProcessMorph
 			}
 		);
 
