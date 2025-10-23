@@ -127,6 +127,7 @@ let preparing = false;
 let stepToken = 0;
 let sourceFontIndexForStep = 0;
 let sourceTextIndexForStep = 0;
+let targetSlotForStep = 0;
 
 let mesh: THREE.Mesh | null = null;
 let morphGeometry: THREE.BufferGeometry | null = null;
@@ -278,6 +279,10 @@ let morphTextures: [SimpleSDFInfo, SimpleSDFInfo, SimpleSDFInfo, SimpleSDFInfo] 
 				? currentTextIndex
 				: nextIndex(textSequence, textSegments.length, currentTextIndex);
 
+		const isFontChange = targetFontIndex !== sourceFontIndexForStep;
+		const isTextChange = targetTextIndex !== sourceTextIndexForStep;
+		targetSlotForStep = isFontChange || isTextChange ? 1 : 0;
+
 		if (targetFontIndex === currentFontIndex && targetTextIndex === currentTextIndex) {
 			preparing = false;
 			animationHandle = requestAnimationFrame(startAnimationLoop);
@@ -296,7 +301,7 @@ let morphTextures: [SimpleSDFInfo, SimpleSDFInfo, SimpleSDFInfo, SimpleSDFInfo] 
 				preparing = false;
 				animating = true;
 				dispatchEvent('stepstart', now());
-				updateMorphUniforms(morphMaterial!, 0, 0, targetFontIndex === currentFontIndex ? 0 : 1);
+				updateMorphUniforms(morphMaterial!, 0, 0, targetSlotForStep);
 				animationHandle = requestAnimationFrame(stepAnimation);
 			})
 			.catch((error) => {
@@ -345,8 +350,7 @@ let morphTextures: [SimpleSDFInfo, SimpleSDFInfo, SimpleSDFInfo, SimpleSDFInfo] 
 
 	function updateMorphProgress(value: number) {
 		if (!morphMaterial) return;
-		const targetSlot = targetFontIndex === currentFontIndex ? 0 : 1;
-		updateMorphUniforms(morphMaterial, value, 0, targetSlot);
+		updateMorphUniforms(morphMaterial, value, 0, targetSlotForStep);
 
 		if (mesh) {
 			const baseX = position?.[0] ?? 0;
@@ -452,7 +456,7 @@ let morphTextures: [SimpleSDFInfo, SimpleSDFInfo, SimpleSDFInfo, SimpleSDFInfo] 
 			(mesh.material as THREE.ShaderMaterial).needsUpdate = true;
 		}
 
-		updateMorphUniforms(morphMaterial!, 0, 0, targetFontIndex === currentFontIndex ? 0 : 1);
+		updateMorphUniforms(morphMaterial!, 0, 0, targetSlotForStep);
 		updateMorphProgress(0);
 	}
 
