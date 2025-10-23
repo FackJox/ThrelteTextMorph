@@ -59,9 +59,20 @@ export function updateMorphUniforms(
 	const safeSource = Math.max(0, Math.min(3, sourceFontIndex));
 	const safeTarget = Math.max(0, Math.min(3, targetFontIndex));
 
-	material.uniforms.morphProgress.value = clampedProgress;
-	material.uniforms.sourceFont.value = safeSource;
-	material.uniforms.targetFont.value = safeTarget;
+	const uniforms = material.uniforms as Record<string, { value: unknown } | undefined>;
+	const progressUniform = uniforms.morphProgress;
+	const sourceUniform = uniforms.sourceFont;
+	const targetUniform = uniforms.targetFont;
+
+	if (progressUniform) {
+		progressUniform.value = clampedProgress;
+	}
+	if (sourceUniform) {
+		sourceUniform.value = safeSource;
+	}
+	if (targetUniform) {
+		targetUniform.value = safeTarget;
+	}
 }
 
 export function updateMaterialColors(

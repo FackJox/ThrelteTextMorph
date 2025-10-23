@@ -12,6 +12,7 @@ import type {
 import { preloadFonts } from './internal/fontLoader';
 import {
 	buildMorphGeometry,
+	buildWordMorph,
 	type LayoutConfig,
 	type SimpleSDFInfo
 } from './internal/sdf';
@@ -20,6 +21,13 @@ import {
 	updateMaterialColors,
 	updateMorphUniforms
 } from './internal/morphMaterial';
+import {
+	createWordMorphMaterial,
+	updateWordMorphColors,
+	updateWordMorphUniforms,
+	refreshWordMorphResources
+} from './internal/wordMorphMaterial';
+import type { WordMorphResources } from './internal/wordMorph';
 import type { ColorRepresentation } from 'three';
 
 export let fonts: FontConfig[] = [];
@@ -136,6 +144,8 @@ let mesh: THREE.Mesh | null = null;
 let morphGeometry: THREE.BufferGeometry | null = null;
 let morphMaterial: THREE.ShaderMaterial | null = null;
 let morphTextures: [SimpleSDFInfo, SimpleSDFInfo, SimpleSDFInfo, SimpleSDFInfo] | null = null;
+let wordMorphResources: WordMorphResources | null = null;
+let currentPipeline: 'glyph' | 'word' = 'glyph';
 
 	function updateTextFromSlot() {
 		if (!slotElement) return;
@@ -353,7 +363,11 @@ let morphTextures: [SimpleSDFInfo, SimpleSDFInfo, SimpleSDFInfo, SimpleSDFInfo] 
 
 	function updateMorphProgress(value: number) {
 		if (!morphMaterial) return;
-		updateMorphUniforms(morphMaterial, value, 0, targetSlotForStep);
+		if (currentPipeline === 'word') {
+			updateWordMorphUniforms(morphMaterial, value);
+		} else {
+			updateMorphUniforms(morphMaterial, value, 0, targetSlotForStep);
+		}
 
 		if (mesh) {
 			const baseX = position?.[0] ?? 0;
@@ -372,13 +386,18 @@ let morphTextures: [SimpleSDFInfo, SimpleSDFInfo, SimpleSDFInfo, SimpleSDFInfo] 
 
 	$: if (morphMaterial && fonts.length > 0) {
 		const currentLayout = computeLayout(currentFontIndex);
-		updateMaterialColors(morphMaterial, {
+		const colorOptions = {
 			fillColor: color,
 			fillOpacity,
 			outlineColor,
 			outlineOpacity,
 			outlineThickness: parseLength(outlineWidth, currentLayout.fontSize)
-		});
+		};
+		if (currentPipeline === 'word') {
+			updateWordMorphColors(morphMaterial, colorOptions);
+		} else {
+			updateMaterialColors(morphMaterial, colorOptions);
+		}
 	}
 
 	async function prepareMorphStep() {
@@ -396,65 +415,121 @@ let morphTextures: [SimpleSDFInfo, SimpleSDFInfo, SimpleSDFInfo, SimpleSDFInfo] 
 		const targetLayout = computeLayout(targetFontIndex);
 
 		const outlineThicknessValue = parseLength(outlineWidth, sourceLayout.fontSize);
+		const colorOptions = {
+			fillColor: color,
+			fillOpacity,
+			outlineColor,
+			outlineOpacity,
+			outlineThickness: outlineThicknessValue
+		};
 
-		const { geometry, textures } = await buildMorphGeometry(
-			{
-				text: sourceText,
-				font: sourceFont,
-				layout: sourceLayout
-			},
-			{
-				text: targetText,
-				font: targetFont,
-				layout: targetLayout
-			},
-			{
-				duplicateMissingGlyphs,
-				blendGlyphIndices,
-				applyPostProcess: postProcessMorph,
-				textGlyphRemap: mode === 'text'
-			}
-		);
+		const previousPipeline = currentPipeline;
+		const useWordPipeline = mode !== 'font' && sourceText !== targetText;
+		console.log('[TextMorph] prepareMorphStep', {
+			mode,
+			sourceText,
+			targetText,
+			useWordPipeline
+		});
 
-		if (!geometry) {
-			throw new Error('Failed to build morph geometry.');
-		}
+		if (useWordPipeline) {
+			const { resources } = await buildWordMorph(
+				{
+					text: sourceText,
+					font: sourceFont,
+					layout: sourceLayout
+				},
+				{
+					text: targetText,
+					font: targetFont,
+					layout: targetLayout
+				}
+			);
 
-		if (morphGeometry && morphGeometry !== geometry.geometry) {
-			morphGeometry.dispose();
-		}
-
-		morphGeometry = geometry.geometry;
-		morphTextures = textures;
-
-		if (!morphMaterial) {
-			morphMaterial = createMorphMaterial(textures, {
-				fillColor: color,
-				fillOpacity,
-				outlineColor,
-				outlineOpacity,
-				outlineThickness: outlineThicknessValue
+			console.log('[TextMorph] word resources', {
+				sourceGlyphCount: resources.source.glyphCount,
+				targetGlyphCount: resources.target.glyphCount,
+				sourceBounds: [...resources.source.wordBounds],
+				targetBounds: [...resources.target.wordBounds]
 			});
+			wordMorphResources = resources;
+			morphTextures = null;
+			currentPipeline = 'word';
+
+			if (morphGeometry && morphGeometry !== resources.geometry) {
+				morphGeometry.dispose();
+			}
+			morphGeometry = resources.geometry;
+
+			if (!morphMaterial || previousPipeline !== 'word') {
+				if (morphMaterial) {
+					morphMaterial.dispose();
+				}
+				morphMaterial = createWordMorphMaterial(resources, colorOptions);
+				console.log('[TextMorph] created word morph material');
+			} else {
+				refreshWordMorphResources(morphMaterial, resources);
+				updateWordMorphColors(morphMaterial, colorOptions);
+				morphMaterial.uniformsNeedUpdate = true;
+				console.log('[TextMorph] refreshed word morph material');
+			}
+
+			updateWordMorphUniforms(morphMaterial!, 0);
 		} else {
-			updateMaterialColors(morphMaterial, {
-				fillColor: color,
-				fillOpacity,
-				outlineColor,
-				outlineOpacity,
-				outlineThickness: outlineThicknessValue
-			});
-			morphMaterial.uniforms.sdfTexture.value = textures[0].texture;
-			morphMaterial.uniforms.sdfTexture2.value = textures[1].texture;
-			morphMaterial.uniforms.sdfTexture3.value = textures[2].texture;
-			morphMaterial.uniforms.sdfTexture4.value = textures[3].texture;
-			if (textures[0].uniforms.uTroikaSDFGlyphSize) {
-				morphMaterial.uniforms.uTroikaSDFGlyphSize.value =
-					textures[0].uniforms.uTroikaSDFGlyphSize.value;
+			const { geometry, textures } = await buildMorphGeometry(
+				{
+					text: sourceText,
+					font: sourceFont,
+					layout: sourceLayout
+				},
+				{
+					text: targetText,
+					font: targetFont,
+					layout: targetLayout
+				},
+				{
+					duplicateMissingGlyphs,
+					blendGlyphIndices,
+					applyPostProcess: postProcessMorph,
+					textGlyphRemap: mode === 'text'
+				}
+			);
+
+			if (!geometry) {
+				throw new Error('Failed to build morph geometry.');
 			}
-			if (textures[0].uniforms.uTroikaSDFExponent) {
-				morphMaterial.uniforms.uTroikaSDFExponent.value =
-					textures[0].uniforms.uTroikaSDFExponent.value;
+
+			if (morphGeometry && morphGeometry !== geometry.geometry) {
+				morphGeometry.dispose();
 			}
+
+			morphGeometry = geometry.geometry;
+			morphTextures = textures;
+			wordMorphResources = null;
+			currentPipeline = 'glyph';
+
+			if (!morphMaterial || previousPipeline !== 'glyph') {
+				if (morphMaterial) {
+					morphMaterial.dispose();
+				}
+				morphMaterial = createMorphMaterial(textures, colorOptions);
+			} else {
+				updateMaterialColors(morphMaterial, colorOptions);
+				morphMaterial.uniforms.sdfTexture.value = textures[0].texture;
+				morphMaterial.uniforms.sdfTexture2.value = textures[1].texture;
+				morphMaterial.uniforms.sdfTexture3.value = textures[2].texture;
+				morphMaterial.uniforms.sdfTexture4.value = textures[3].texture;
+				if (textures[0].uniforms.uTroikaSDFGlyphSize) {
+					morphMaterial.uniforms.uTroikaSDFGlyphSize.value =
+						textures[0].uniforms.uTroikaSDFGlyphSize.value;
+				}
+				if (textures[0].uniforms.uTroikaSDFExponent) {
+					morphMaterial.uniforms.uTroikaSDFExponent.value =
+						textures[0].uniforms.uTroikaSDFExponent.value;
+				}
+			}
+
+			updateMorphUniforms(morphMaterial!, 0, 0, targetSlotForStep);
 		}
 
 		if (mesh && morphGeometry) {
@@ -465,7 +540,6 @@ let morphTextures: [SimpleSDFInfo, SimpleSDFInfo, SimpleSDFInfo, SimpleSDFInfo] 
 			(mesh.material as THREE.ShaderMaterial).needsUpdate = true;
 		}
 
-		updateMorphUniforms(morphMaterial!, 0, 0, targetSlotForStep);
 		updateMorphProgress(0);
 	}
 

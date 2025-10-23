@@ -8,6 +8,7 @@ import type {
 	GlyphMorphOptions
 } from './glyphGeometryBuilder4';
 import { createMultiGlyphGeometry4 } from './glyphGeometryBuilder4';
+import { buildWordMorphResources, type WordMorphResources } from './wordMorph';
 
 export interface SimpleSDFInfo {
 	texture: THREE.Texture;
@@ -144,6 +145,10 @@ export interface MorphGeometryResult {
 
 export type MorphGeometryOptions = GlyphMorphOptions;
 
+export interface WordMorphResult {
+	resources: WordMorphResources;
+}
+
 export async function buildMorphGeometry(
 	source: { text: string; font: FontConfig; layout: LayoutConfig },
 	target: { text: string; font: FontConfig; layout: LayoutConfig },
@@ -230,4 +235,17 @@ function toTextureInfo(info: SimpleSDFInfo): TextureInfo {
 		geometry: info.geometry,
 		uniforms: info.uniforms
 	};
+}
+
+export async function buildWordMorph(
+	source: { text: string; font: FontConfig; layout: LayoutConfig },
+	target: { text: string; font: FontConfig; layout: LayoutConfig }
+): Promise<WordMorphResult> {
+	const [sourceInfo, targetInfo] = await Promise.all([
+		getSDFInfo(source.text, source.font, source.layout),
+		getSDFInfo(target.text, target.font, target.layout)
+	]);
+
+	const resources = buildWordMorphResources(sourceInfo, targetInfo);
+	return { resources };
 }
