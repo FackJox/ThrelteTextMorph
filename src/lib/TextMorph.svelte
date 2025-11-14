@@ -9,7 +9,7 @@ import type {
 	MorphMode,
 	SequenceMode
 } from './types';
-import { preloadFonts } from './internal/fontLoader';
+import { preloadFonts, areFontsReady } from './internal/fontLoader';
 import {
 	buildMorphGeometry,
 	buildWordMorph,
@@ -121,6 +121,8 @@ const easingMap: Record<string, (t: number) => number> = {
 	let resolvedText = '';
 let ready = false;
 let errored = false;
+let pendingFonts: FontConfig[] = [];
+let initializationPromise: Promise<void> | null = null;
 
 let elapsedStartMs = 0;
 let animationHandle: number | null = null;
@@ -544,6 +546,24 @@ let currentPipeline: 'glyph' | 'word' = 'glyph';
 			mesh.material = morphMaterial;
 			(mesh.material as THREE.ShaderMaterial).needsUpdate = true;
 		}
+	}
+
+	function scheduleInitialization(reason: 'fonts' | 'text') {
+		if (!areFontsReady(fonts) || preparing || animating) return;
+		initializationPromise = preloadFonts(fonts).then(async () => {
+			pendingFonts = fonts.slice();
+			await prepareMorphStep();
+			ready = true;
+			dispatchEvent('ready', now());
+		});
+	}
+
+	$: if (areFontsReady(fonts) && !ready && !initializationPromise) {
+		scheduleInitialization('fonts');
+	}
+
+	$: if (ready && fonts !== pendingFonts) {
+		scheduleInitialization('fonts');
 	}
 
 	onMount(() => {

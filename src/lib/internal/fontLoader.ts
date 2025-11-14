@@ -75,3 +75,7 @@ export function __resetFontLoader() {
 	fontLoader = defaultLoader;
 	__clearFontCache();
 }
+
+export function areFontsReady(fonts: FontConfig[]): boolean {
+	return Array.isArray(fonts) && fonts.some((font) => typeof font?.url === 'string' && font.url.length > 0);
+}
