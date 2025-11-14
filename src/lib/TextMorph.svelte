@@ -304,15 +304,16 @@ let currentPipeline: 'glyph' | 'word' = 'glyph';
 
 		const stepId = ++stepToken;
 		preparing = true;
-		morphProgress = 0;
 
 		prepareMorphStep()
 			.then(() => {
 				if (stepToken !== stepId) {
 					return;
 				}
+				morphProgress = 0;
 				preparing = false;
 				animating = true;
+				updateMorphProgress(0);
 				dispatchEvent('stepstart', now());
 				updateMorphUniforms(morphMaterial!, 0, 0, targetSlotForStep);
 				animationHandle = requestAnimationFrame(stepAnimation);
@@ -429,6 +430,9 @@ let currentPipeline: 'glyph' | 'word' = 'glyph';
 			mode,
 			sourceText,
 			targetText,
+			sourceFontIndex: sourceFontIndexForStep,
+			targetFontIndex,
+			currentFontIndex,
 			useWordPipeline
 		});
 
@@ -491,7 +495,8 @@ let currentPipeline: 'glyph' | 'word' = 'glyph';
 					duplicateMissingGlyphs,
 					blendGlyphIndices,
 					applyPostProcess: postProcessMorph,
-					textGlyphRemap: mode === 'text'
+					textGlyphRemap: mode === 'text',
+					normalizeSize: mode !== 'font'
 				}
 			);
 
@@ -539,8 +544,6 @@ let currentPipeline: 'glyph' | 'word' = 'glyph';
 			mesh.material = morphMaterial;
 			(mesh.material as THREE.ShaderMaterial).needsUpdate = true;
 		}
-
-		updateMorphProgress(0);
 	}
 
 	onMount(() => {

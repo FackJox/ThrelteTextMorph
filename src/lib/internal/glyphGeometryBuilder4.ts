@@ -26,6 +26,7 @@ export interface GlyphMorphOptions {
 	applyPostProcess?: boolean;
 	textGlyphRemap?: boolean;
 	indexOverrides?: Array<number[] | null>;
+	normalizeSize?: boolean;
 }
 
 // Multi-glyph geometry builder for 4 fonts
@@ -37,6 +38,7 @@ export function createMultiGlyphGeometry4(
 	normalizeSize: boolean = true,
 	options: GlyphMorphOptions = {}
 ): SimpleGeometry | null {
+	const applyNormalization = options.normalizeSize ?? normalizeSize;
 	// We need the original geometry to get glyph data
 	const troikaGeometry1 = textureInfo1.geometry;
 	if (!troikaGeometry1) {
@@ -249,7 +251,7 @@ export function createMultiGlyphGeometry4(
 	];
 
 	// Only apply normalization if enabled and we have a valid target
-	if (normalizeSize && targetWidth > 0 && targetHeight > 0) {
+	if (applyNormalization && targetWidth > 0 && targetHeight > 0) {
 		// Font 1 stays as-is (scale factor = 1, no offset needed since it's the reference)
 		if (bounds1) {
 			scaleFactors[0] = 1;
@@ -538,7 +540,7 @@ export function createMultiGlyphGeometry4(
 
 	return {
 		geometry,
-		normalizedBounds: normalizeSize
+		normalizedBounds: applyNormalization
 			? {
 					width: targetWidth,
 					height: targetHeight,

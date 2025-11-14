@@ -180,8 +180,9 @@ export async function buildMorphGeometry(
 		indexOverrides = [null, targetMap, targetMap, targetMap];
 	}
 
+	const { normalizeSize = true, ...restOptions } = options;
 	const builderOptions: GlyphMorphOptions = {
-		...options,
+		...restOptions,
 		indexOverrides
 	};
 
@@ -190,7 +191,7 @@ export async function buildMorphGeometry(
 		toTextureInfo(targetInfo),
 		toTextureInfo(targetInfo),
 		toTextureInfo(targetInfo),
-		true,
+		normalizeSize,
 		builderOptions
 	);
 
