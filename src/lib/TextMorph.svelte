@@ -122,6 +122,7 @@ const easingMap: Record<string, (t: number) => number> = {
 let ready = false;
 let errored = false;
 let pendingFonts: FontConfig[] = [];
+let fontsChanged = false;
 let initializationPromise: Promise<void> | null = null;
 
 let elapsedStartMs = 0;
@@ -148,6 +149,7 @@ let morphMaterial: THREE.ShaderMaterial | null = null;
 let morphTextures: [SimpleSDFInfo, SimpleSDFInfo, SimpleSDFInfo, SimpleSDFInfo] | null = null;
 let wordMorphResources: WordMorphResources | null = null;
 let currentPipeline: 'glyph' | 'word' = 'glyph';
+let lastPreparedSignature = '';
 
 	function updateTextFromSlot() {
 		if (!slotElement) return;
@@ -550,20 +552,58 @@ let currentPipeline: 'glyph' | 'word' = 'glyph';
 
 	function scheduleInitialization(reason: 'fonts' | 'text') {
 		if (!areFontsReady(fonts) || preparing || animating) return;
+		fontsChanged = false;
 		initializationPromise = preloadFonts(fonts).then(async () => {
-			pendingFonts = fonts.slice();
+			pendingFonts = fonts;
 			await prepareMorphStep();
+			lastPreparedSignature = JSON.stringify({
+				text: resolvedText,
+				font: currentFontIndex,
+				fontSize,
+				letterSpacing,
+				lineHeight,
+				maxWidth,
+				anchorX,
+				anchorY,
+				textAlign,
+				fontWeight
+			});
 			ready = true;
 			dispatchEvent('ready', now());
 		});
 	}
 
+	$: fontsChanged = fonts !== pendingFonts;
+
 	$: if (areFontsReady(fonts) && !ready && !initializationPromise) {
 		scheduleInitialization('fonts');
 	}
 
-	$: if (ready && fonts !== pendingFonts) {
+	$: if (ready && fontsChanged) {
 		scheduleInitialization('fonts');
+	}
+
+	$: currentSignature = JSON.stringify({
+		text: resolvedText,
+		font: currentFontIndex,
+		fontSize,
+		letterSpacing,
+		lineHeight,
+		maxWidth,
+		anchorX,
+		anchorY,
+		textAlign,
+		fontWeight
+	});
+
+	$: if (ready && !animating && !preparing && currentSignature !== lastPreparedSignature && lastPreparedSignature !== '') {
+		const signature = currentSignature;
+		prepareMorphStep().then(() => {
+			lastPreparedSignature = signature;
+		}).catch((error) => {
+			console.error('[TextMorph] Failed to rebuild after prop change', error);
+			errored = true;
+		});
 	}
 
 	onMount(() => {
@@ -576,41 +616,17 @@ let currentPipeline: 'glyph' | 'word' = 'glyph';
 			}
 		}
 
-		if (!fonts || fonts.length === 0) {
-			console.error('[TextMorph] No fonts provided. Component will not render.');
-			errored = true;
-			return;
-		}
-
-		let cancelled = false;
 		elapsedStartMs = now();
 
-		preloadFonts(fonts)
-			.then(async () => {
-				if (cancelled) return;
-				targetFontIndex = currentFontIndex;
-				targetTextIndex = currentTextIndex;
-				try {
-					await prepareMorphStep();
-				} catch (error) {
-					console.error('[TextMorph] Failed to prepare initial geometry.', error);
-					errored = true;
-					return;
-				}
-				ready = true;
-				dispatchEvent('ready', now());
-				animationHandle = requestAnimationFrame(startAnimationLoop);
-			})
-			.catch((error) => {
-				console.error('[TextMorph] Failed to preload fonts.', error);
-				errored = true;
-				ready = false;
-			});
-
-		return () => {
-			cancelled = true;
-		};
+		// Font initialization is now handled by scheduleInitialization reactive statement
+		// Once ready, start animation loop
+		const unsubscribe = () => {};
+		return unsubscribe;
 	});
+
+	$: if (ready && !animationHandle) {
+		animationHandle = requestAnimationFrame(startAnimationLoop);
+	}
 
 	onDestroy(() => {
 		if (slotElement) {
