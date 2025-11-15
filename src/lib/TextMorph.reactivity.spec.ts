@@ -68,4 +68,24 @@ describe('TextMorph font hydration', () => {
 
     expect(buildMorphGeometryMock).toHaveBeenCalledTimes(initialCalls + 1);
   });
+
+  it.skip('updates mesh position when base position changes', async () => {
+    // SKIP REASON: T.Mesh requires Threlte context which doesn't exist in jsdom
+    // environment. Additionally, component.$set() doesn't trigger reactive statements
+    // (same limitation as "text prop changes" test above).
+    // The implementation uses reactive statements that trigger on position, rotation,
+    // scale, and other transform prop changes. Manual verification in examples/playground
+    // confirms this works correctly in real browser environment.
+
+    const { default: TextMorph } = await import('./TextMorph.svelte');
+    const { component, getByTestId } = render(TextMorph, {
+      props: { fonts: [{ url: 'font-1' }], position: [0, 0, 0], text: 'shift' }
+    });
+    await Promise.resolve();
+    component.$set({ position: [0, 2, 0] });
+    await Promise.resolve();
+
+    const mesh = getByTestId('text-morph-mesh');
+    expect(mesh.position.set).toHaveBeenLastCalledWith(0, 2, 0);
+  });
 });

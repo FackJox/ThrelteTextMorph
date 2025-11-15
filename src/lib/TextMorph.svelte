@@ -373,20 +373,27 @@ let lastPreparedSignature = '';
 		} else {
 			updateMorphUniforms(morphMaterial, value, 0, targetSlotForStep);
 		}
+	}
 
-		if (mesh) {
-			const baseX = position?.[0] ?? 0;
-			const baseY = position?.[1] ?? 0;
-			const baseZ = position?.[2] ?? 0;
-			const sourceShift = fonts[sourceFontIndexForStep]?.baselineShift ?? 0;
-			const targetShift = fonts[targetFontIndex]?.baselineShift ?? 0;
-			const y = baseY + sourceShift + (targetShift - sourceShift) * value;
-			mesh.position.set(baseX, y, baseZ);
-		}
+	function applyBaselineBlend(value: number) {
+		if (!mesh) return;
+		const baseX = position?.[0] ?? 0;
+		const baseY = position?.[1] ?? 0;
+		const baseZ = position?.[2] ?? 0;
+		const sourceShift = fonts[sourceFontIndexForStep]?.baselineShift ?? 0;
+		const targetShift = fonts[targetFontIndex]?.baselineShift ?? 0;
+		mesh.position.set(baseX, baseY + sourceShift + (targetShift - sourceShift) * value, baseZ);
 	}
 
 	$: if (mesh) {
-		updateMorphProgress(morphProgress);
+		const eased = morphProgress;
+		updateMorphProgress(eased);
+		applyBaselineBlend(eased);
+		mesh.rotation.set(...rotation);
+		mesh.scale.set(...scale);
+		mesh.castShadow = castShadow;
+		mesh.receiveShadow = receiveShadow;
+		mesh.frustumCulled = frustumCulled;
 	}
 
 	$: if (morphMaterial && fonts.length > 0) {
@@ -695,13 +702,9 @@ let lastPreparedSignature = '';
 
 {#if ready && morphGeometry && morphMaterial && !errored}
 	<T.Mesh
+		data-testid="text-morph-mesh"
 		bind:ref={mesh}
 		geometry={morphGeometry}
 		material={morphMaterial}
-		rotation={rotation}
-		scale={scale}
-		castShadow={castShadow}
-		receiveShadow={receiveShadow}
-		frustumCulled={frustumCulled}
 	/>
 {/if}
